@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>推し活チェキカメラ</title>
+    <!-- Tailwind CSS for layout styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+
+        html, body {
+
+            width: 100vw;
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
+            background-color: #0f172a;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            color: #fff;
+        }
+
+        /* --- 画面切り替え用CSS --- */
+        .screen {
+            display: none !important;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            height: 100dvh;
+            z-index: 1;
+            background-color: #0f172a;
+            flex-direction: column;
+            justify-content: space-between;
+            padding-bottom: calc(12px + env(safe-area-inset-bottom));
+        }
+
+        .screen.active {
+            display: flex !important;
+        }
+
+        /* --- カメラ鏡像 --- */
+        .camera-mirrored {
+            transform: scaleX(-1);
+        }
+
+        /* --- タイマー点滅アニメーション --- */
+        @keyframes flashYellow {
+            0% { background-color: rgba(234, 179, 8, 0); }
+            100% { background-color: rgba(234, 179, 8, 0.35); }
+        }
+
+        @keyframes flashRed {
+            0% { background-color: rgba(239, 68, 68, 0.2); }
+            100% { background-color: rgba(239, 68, 68, 0.65); }
+        }
+
+        .flash-warning {
+            animation: flashYellow 0.8s infinite alternate;
+        }
+
+        .flash-timeout {
+            animation: flashRed 0.4s infinite alternate;
+        }
+
+        /* --- カスタムスクロールバー --- */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white select-none">
+
+    <!-- ================================================================= -->
+    <!-- 1. 撮影画面 (CAMERA SCREEN)                                      -->
+    <!-- ================================================================= -->
+    <div id="screen-camera" class="screen active">
+        <!-- 上部コントロールバー -->
+        <div class="relative z-10 flex justify-between items-center px-4 py-3 bg-gradient-to-b from-black/80 to-transparent">
+            <button id="btn-open-settings" class="w-10 h-10 rounded-full bg-black/40 border border-white/20 flex items-center justify-center text-lg active:scale-95 transition" title="推し設定">⚙️</button>
+            <button id="btn-open-album" class="w-10 h-10 rounded-full bg-black/40 border border-white/20 flex items-center justify-center text-lg active:scale-95 transition" title="アルバム">🖼️</button>
+            <button id="btn-toggle-timer" class="relative w-10 h-10 rounded-full bg-black/40 border border-white/20 flex items-center justify-center text-lg active:scale-95 transition" title="タイマー">
+                ⏱️
+                <span id="badge-timer" class="absolute -bottom-1 -right-1 bg-pink-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white">オフ</span>
+            </button>
+            <button id="btn-toggle-flash" class="w-10 h-10 rounded-full bg-black/40 border border-white/20 flex items-center justify-center text-lg active:scale-95 transition" title="フラッシュ">⚡</button>
+            <button id="btn-switch-camera" class="w-10 h-10 rounded-full bg-black/40 border border-white/20 flex items-center justify-center text-lg active:scale-95 transition" title="カメラ切替">🔄</button>
+        </div>
+
+        <!-- 推し選択バッジ -->
+        <div class="absolute top-16 left-0 right-0 z-10 flex justify-center pointer-events-auto">
+            <button id="badge-active-idol" class="px-4 py-1.5 rounded-full bg-black/60 border-2 border-pink-500 text-sm font-bold shadow-lg flex items-center gap-2 active:scale-95 transition">
+                <span id="idol-color-indicator" class="w-3 h-3 rounded-full bg-pink-500"></span>
+                <span id="idol-name-display">推しメン未選択</span>
+            </button>
+        </div>
+
+        <!-- カメラビューポート -->
+        <div class="relative flex-1 bg-black overflow-hidden flex items-center justify-center">
+            <video id="camera-video" class="w-full h-full object-cover camera-mirrored" autoplay playsinline muted></video>
+            
+            <!-- カウントダウン表示 -->
+            <div id="overlay-countdown" class="hidden absolute inset-0 flex items-center justify-center text-8xl font-black text-white drop-shadow-[0_4px_10px_rgba(0,0,0,0.8)] pointer-events-none z-20">
+                3
+            </div>
+
+            <!-- フラッシュ演出用オーバーレイ -->
+            <div id="overlay-flash" class="absolute inset-0 bg-white opacity-0 pointer-events-none z-30 transition-opacity duration-200"></div>
+        </div>
+
+        <!-- 下部シャッターバー -->
+        <div class="relative z-10 flex justify-center items-center py-4 bg-gradient-to-t from-black/80 to-transparent">
+            <button id="btn-shutter" class="w-20 h-20 rounded-full bg-white border-4 border-pink-500 shadow-xl active:scale-90 transition flex items-center justify-center">
+                <div class="w-16 h-16 rounded-full border-2 border-slate-300"></div>
+            </button>
+        </div>
+    </div>
+
+    <!-- ================================================================= -->
+    <!-- 2. 撮影プレビュー画面 (CAPTURE PREVIEW)                            -->
+    <!-- ================================================================= -->
+    <div id="screen-capture-preview" class="screen">
+        <div class="p-4 text-center text-sm font-bold text-slate-300">撮影写真の確認</div>
+        
+        <div class="flex-1 w-full flex items-center justify-center p-4 overflow-hidden">
+            <img id="img-capture-preview" class="max-w-full max-h-full object-contain rounded-lg shadow-2xl border border-slate-700" src="" alt="撮影プレビュー">
+        </div>
+
+        <div class="px-6 py-4 flex gap-4">
+            <button id="btn-retake" class="flex-1 py-3 bg-slate-700 hover:bg-slate-600 font-bold rounded-2xl active:scale-95 transition">撮り直す</button>
+            <button id="btn-proceed-editor" class="flex-1 py-3 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 font-bold rounded-2xl shadow-lg active:scale-95 transition">デコレーションへ進む</button>
+        </div>
+    </div>
+
+    <!-- ================================================================= -->
+    <!-- 3. デザイン・デコ編集画面 (EDITOR SCREEN)                         -->
+    <!-- ================================================================= -->
+    <div id="screen-editor" class="screen">
+        <!-- タイマー表示バー -->
+        <div class="px-4 py-2 bg-slate-800 flex items-center justify-between gap-2 border-b border-slate-700">
+            <div class="flex items-center gap-2">
+                <span class="text-xs text-slate-400 font-bold">制限時間:</span>
+                <select id="select-editor-timer" class="bg-slate-900 border border-slate-700 rounded-lg text-xs px-2 py-1 text-white focus:outline-none">
+                    <option value="60">1分</option>
+                    <option value="90">1分30秒</option>
+                    <option value="120">2分</option>
+                    <option value="0">無制限</option>
+                </select>
+            </div>
+            
+            <div id="display-editor-timer" class="font-mono text-xl font-black text-pink-500 tracking-wider">01:00</div>
+            
+            <button id="btn-toggle-editor-timer" class="px-3 py-1 text-xs font-bold bg-pink-500 hover:bg-pink-600 rounded-lg active:scale-95 transition">スタート</button>
+        </div>
+
+        <!-- 描画キャンバスラッパー -->
+        <div class="relative flex-1 w-full flex items-center justify-center p-2 overflow-hidden bg-slate-950">
+            <!-- タイマー警告用オーバーレイ -->
+            <div id="overlay-editor-timer-flash" class="absolute inset-0 pointer-events-none z-10"></div>
+            
+            <!-- チェキキャンバス (9:16比率) -->
+            <div class="relative max-w-full max-h-full aspect-[9/16] bg-white p-3 rounded-lg shadow-2xl flex flex-col items-center">
+                <canvas id="canvas-paint" class="w-full flex-1 bg-black rounded border border-slate-200 touch-none"></canvas>
+                <div class="w-full h-12 flex items-center justify-between px-2 text-slate-800 font-bold text-xs pt-2">
+                    <span id="canvas-footer-date">2026.09.10</span>
+                    <span id="canvas-footer-idol" class="text-pink-600">Oshi-Cheki</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 編集ツールバー -->
+        <div class="px-3 py-2 bg-slate-800 border-t border-slate-700 flex justify-between items-center gap-1">
+            <button id="tool-color" class="flex-1 py-2 rounded-xl flex flex-col items-center justify-center text-pink-400 bg-slate-700/50 text-xs font-bold gap-1 active:scale-95 transition">
+                🎨 <span>カラー</span>
+            </button>
+            <button id="tool-size" class="flex-1 py-2 rounded-xl flex flex-col items-center justify-center text-slate-300 hover:text-pink-400 text-xs font-bold gap-1 active:scale-95 transition">
+                ✏️ <span>太さ</span>
+            </button>
+            <button id="tool-eraser" class="flex-1 py-2 rounded-xl flex flex-col items-center justify-center text-slate-300 hover:text-pink-400 text-xs font-bold gap-1 active:scale-95 transition">
+                🧹 <span>消しゴム</span>
+            </button>
+            <button id="tool-stamp" class="flex-1 py-2 rounded-xl flex flex-col items-center justify-center text-slate-300 hover:text-pink-400 text-xs font-bold gap-1 active:scale-95 transition">
+                ⭐ <span>スタンプ</span>
+            </button>
+            <button id="tool-clear" class="flex-1 py-2 rounded-xl flex flex-col items-center justify-center text-slate-300 hover:text-red-400 text-xs font-bold gap-1 active:scale-95 transition">
+                🗑️ <span>クリア</span>
+            </button>
+        </div>
+
+        <!-- アクションボタンバー -->
+        <div class="px-4 py-3 bg-slate-900 border-t border-slate-800 flex gap-3">
+            <button id="btn-editor-complete" class="w-full py-3 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 font-bold rounded-2xl shadow-lg active:scale-95 transition">
+                完成して確認する
+            </button>
+        </div>
+    </div>
+
+    <!-- ================================================================= -->
+    <!-- 4. 完成プレビュー画面 (DESIGN PREVIEW)                           -->
+    <!-- ================================================================= -->
+    <div id="screen-design-preview" class="screen">
+        <div class="p-4 text-center text-sm font-bold text-slate-300">完成チェキの確認</div>
+        
+        <div class="flex-1 w-full flex items-center justify-center p-4 overflow-hidden">
+            <img id="img-design-preview" class="max-w-full max-h-full object-contain rounded-lg shadow-2xl border border-slate-700" src="" alt="完成チェキ">
+        </div>
+
+        <div class="px-6 py-4 flex gap-4">
+            <button id="btn-editor-back" class="flex-1 py-3 bg-slate-700 hover:bg-slate-600 font-bold rounded-2xl active:scale-95 transition">修正する</button>
+            <button id="btn-save-album" class="flex-1 py-3 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 font-bold rounded-2xl shadow-lg active:scale-95 transition">アルバムに保存</button>
+        </div>
+    </div>
+
+    <!-- ================================================================= -->
+    <!-- 5. アルバム画面 (ALBUM SCREEN)                                   -->
+    <!-- ================================================================= -->
+    <div id="screen-album" class="screen">
+        <div class="px-4 py-3 bg-slate-800 border-b border-slate-700 flex items-center justify-between">
+            <button id="btn-album-back" class="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center font-bold text-slate-200">←</button>
+            <h2 class="font-bold text-base text-white">チェキアルバム</h2>
+            <button id="btn-album-clear-all" class="text-xs text-red-400 hover:text-red-300 font-bold px-2 py-1 rounded bg-red-950/40 border border-red-800">全削除</button>
+        </div>
+
+        <!-- フィルター -->
+        <div class="p-3 bg-slate-800/50 flex gap-2 overflow-x-auto" id="album-filter-container">
+            <!-- 動的にフィルターボタンが挿入されます -->
+        </div>
+
+        <!-- 写真グリッド -->
+        <div class="flex-1 p-3 overflow-y-auto">
+            <div id="album-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <!-- 保存された写真がここに描画されます -->
+            </div>
+            <div id="album-empty-msg" class="hidden h-64 flex flex-col items-center justify-center text-slate-500 gap-2">
+                <span class="text-4xl">📷</span>
+                <p class="text-xs">保存されたチェキはまだありません</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================= -->
+    <!-- 6. モーダルダイアログ (MODAL DIALOGS)                            -->
+    <!-- ================================================================= -->
+    
+    <!-- 設定・推しメン管理モーダル -->
+    <div id="modal-settings" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-800 border border-slate-700 w-full max-w-md rounded-2xl shadow-2xl p-5 flex flex-col max-h-[85vh]">
+            <div class="flex justify-between items-center mb-4 pb-2 border-b border-slate-700">
+                <h3 class="font-bold text-lg text-pink-400">推しメン & グループ設定</h3>
+                <button id="btn-close-settings" class="text-slate-400 hover:text-white font-bold text-xl px-2">×</button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto space-y-5 pr-1">
+                <!-- 推し追加フォーム -->
+                <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-700/50 space-y-3">
+                    <h4 class="text-xs font-bold text-slate-300">新しい推しメンバーを追加</h4>
+                    <div>
+                        <label class="block text-[11px] text-slate-400 mb-1">グループ名</label>
+                        <input id="input-group-name" type="text" placeholder="例: サンプルグループ" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-pink-500">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] text-slate-400 mb-1">推しメン名</label>
+                        <input id="input-idol-name" type="text" placeholder="例: 〇〇ちゃん" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-pink-500">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] text-slate-400 mb-1">メンカラ（メンバーカラー）</label>
+                        <input id="input-idol-color" type="color" value="#ff3366" class="w-full h-8 bg-slate-800 border border-slate-600 rounded-lg cursor-pointer">
+                    </div>
+                    <button id="btn-add-idol" class="w-full py-2 bg-pink-600 hover:bg-pink-500 text-xs font-bold rounded-lg transition">追加する</button>
+                </div>
+
+                <!-- メンバー一覧 -->
+                <div>
+                    <h4 class="text-xs font-bold text-slate-300 mb-2">登録中の推しメン</h4>
+                    <div id="idol-list-container" class="space-y-2">
+                        <!-- 動的に挿入されます -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ライトボックス (全画面表示モーダル) -->
+    <div id="modal-lightbox" class="hidden fixed inset-0 bg-black/95 z-50 flex flex-col items-center justify-between p-4">
+        <div class="w-full flex justify-end">
+            <button id="btn-close-lightbox" class="text-white text-3xl font-bold p-2">×</button>
+        </div>
+        
+        <div class="flex-1 w-full flex items-center justify-center p-2 overflow-hidden">
+            <img id="img-lightbox" class="max-w-full max-h-full object-contain rounded-lg shadow-2xl" src="" alt="拡大表示">
+        </div>
+
+        <div class="w-full max-w-md flex flex-col items-center gap-3 pt-2">
+            <div id="info-lightbox" class="text-xs text-slate-400 font-mono">2026.09.10 | サンプルグループ</div>
+            <div class="w-full flex gap-3">
+                <button id="btn-download-lightbox" class="flex-1 py-3 bg-pink-600 hover:bg-pink-500 font-bold rounded-xl text-sm transition">画像をダウンロード</button>
+                <button id="btn-delete-lightbox" class="py-3 px-4 bg-red-900/60 hover:bg-red-800 text-red-200 border border-red-700 font-bold rounded-xl text-sm transition">削除</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ツールポップアップ (カラー / 太さ / スタンプ) -->
+    <div id="popup-tool-palette" class="hidden fixed bottom-20 left-4 right-4 bg-slate-800 border border-slate-700 rounded-2xl p-4 shadow-2xl z-40 max-w-md mx-auto">
+        <div class="flex justify-between items-center mb-3">
+            <span id="popup-tool-title" class="text-xs font-bold text-slate-300">パレット</span>
+            <button id="btn-close-popup" class="text-slate-400 text-sm">✕</button>
+        </div>
+        <div id="popup-tool-content" class="min-h-[60px] flex items-center justify-center">
+            <!-- ツールに応じたコンテンツが入ります -->
+        </div>
+    </div>
+
+    <!-- メッセージ通知トースト -->
+    <div id="toast-message" class="fixed top-5 left-1/2 -translate-x-1/2 bg-slate-800/90 border border-pink-500/50 text-pink-300 px-4 py-2 rounded-full text-xs font-bold shadow-xl z-50 pointer-events-none opacity-0 transition-opacity duration-300">
+        通知メッセージ
+    </div>
+
+
+    <!-- ================================================================= -->
+    <!-- 7. JAVASCRIPT LOGIC & MODULES                                     -->
+    <!-- ================================================================= -->
+    <script>
+        /**
+         * @section AppState
+         * アプリ全体のステートおよび定数定義
+         */
+        const AppState = {
+            currentScreen: 'screen-camera',
+            cameraStream: null,
+            useFrontCamera: true,
+            flashEnabled: false,
+            cameraTimerSec: 0,
+            
+            // 撮影写真DataURL
+            capturedImageData: null,
+            
+            // デコ設定
+            currentColor: '#FF3366',
+            penSize: 12,
+            eraserSize: 20,
+            currentTool: 'color', // 'color', 'size', 'eraser', 'stamp'
+            selectedStamp: '❤️',
+            
+            // デコタイマー
+            editorTimerInterval: null,
+            editorTimerSeconds: 60,
+            isEditorTimerRunning: false,
+            
+            // 選択中の推しメン
+            activeIdolId: null,
+
+            // アルバム閲覧中の選択ID
+            currentLightboxPhotoId: null
+        };
+
+        const COLOR_PALETTE = [
+            '#FFFFFF', '#FF3366', '#FF9900', '#FFCC00', 
+            '#33CC66', '#0099FF', '#9933FF', '#000000'
+        ];
+
+        const STAMPS = ['💖', '🌟', '✨', '🎀', '🐾', '👑', '🎉', '💐', '推し', '最高', '尊い', '神'];
+
+        /**
+         * @section StorageModule
+         * ローカルストレージデータの読み書きを担当
+         */
+        const StorageModule = {
+            STORAGE_KEYS: {
+                GROUPS: 'cheki_groups',
+                IDOLS: 'cheki_idol_list',
+                ACTIVE_IDOL: 'cheki_active_idol_id',
+                ALBUM: 'cheki_album_photos'
+            },
+
+            getIdols() {
+                const data = localStorage.getItem(this.STORAGE_KEYS.IDOLS);
+                return data ? JSON.parse(data) : [
+                    { id: 1, group: '公式サンプル', name: '推しちゃん', color: '#FF3366' }
+                ];
+            },
+
+            saveIdols(idols) {
+                localStorage.setItem(this.STORAGE_KEYS.IDOLS, JSON.stringify(idols));
+            },
+
+            getActiveIdol() {
+                const idols = this.getIdols();
+                const activeId = Number(localStorage.getItem(this.STORAGE_KEYS.ACTIVE_IDOL));
+                return idols.find(item => item.id === activeId) || idols[0] || null;
+            },
+
+            setActiveIdolId(id) {
+                localStorage.setItem(this.STORAGE_KEYS.ACTIVE_IDOL, id);
+                AppState.activeIdolId = id;
+            },
+
+            getAlbumPhotos() {
+                const data = localStorage.getItem(this.STORAGE_KEYS.ALBUM);
+                return data ? JSON.parse(data) : [];
+            },
+
+            saveAlbumPhoto(photoObj) {
+                const photos = this.getAlbumPhotos();
+                photos.unshift(photoObj); // 最新を先頭に
+                localStorage.setItem(this.STORAGE_KEYS.ALBUM, JSON.stringify(photos));
+            },
+
+            deleteAlbumPhoto(id) {
+                let photos = this.getAlbumPhotos();
+                photos = photos.filter(p => p.id !== id);
+                localStorage.setItem(this.STORAGE_KEYS.ALBUM, JSON.stringify(photos));
+            },
+
+            clearAlbum() {
+                localStorage.removeItem(this.STORAGE_KEYS.ALBUM);
+            }
+        };
+
+        /**
+         * @section CameraModule
+         * カメラの起動、切り替え、シャッター、タイマー処理を担当
+         */
+        const CameraModule = {
+            videoEl: null,
+
+            init() {
+                this.videoEl = document.getElementById('camera-video');
+                this.startCamera();
+            },
+
+            async startCamera() {
+                if (AppState.cameraStream) {
+                    AppState.cameraStream.getTracks().forEach(track => track.stop());
+                }
+
+                const constraints = {
+                    video: {
+                        facingMode: AppState.useFrontCamera ? 'user' : 'environment',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                };
+
+                try {
+                    AppState.cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+                    this.videoEl.srcObject = AppState.cameraStream;
+                    
+                    if (AppState.useFrontCamera) {
+                        this.videoEl.classList.add('camera-mirrored');
+                    } else {
+                        this.videoEl.classList.remove('camera-mirrored');
+                    }
+                } catch (err) {
+                    console.error('Camera Access Error:', err);
+                    UIModule.showToast('カメラへのアクセスが拒否されました');
+                }
+            },
+
+            toggleCamera() {
+                AppState.useFrontCamera = !AppState.useFrontCamera;
+                this.startCamera();
+            },
+
+            triggerShutterSequence() {
+                if (AppState.cameraTimerSec > 0) {
+                    let count = AppState.cameraTimerSec;
+                    const countdownEl = document.getElementById('overlay-countdown');
+                    countdownEl.textContent = count;
+                    countdownEl.classList.remove('hidden');
+
+                    const timer = setInterval(() => {
+                        count--;
+                        if (count > 0) {
+                            countdownEl.textContent = count;
+                        } else {
+                            clearInterval(timer);
+                            countdownEl.classList.add('hidden');
+                            this.captureFrame();
+                        }
+                    }, 1000);
+                } else {
+                    this.captureFrame();
+                }
+            },
+
+            captureFrame() {
+                // フラッシュエフェクト演出
+                if (AppState.flashEnabled) {
+                    const flashOverlay = document.getElementById('overlay-flash');
+                    flashOverlay.style.opacity = '1';
+                    setTimeout(() => flashOverlay.style.opacity = '0', 200);
+                }
+
+                const canvas = document.createElement('canvas');
+                canvas.width = this.videoEl.videoWidth || 720;
+                canvas.height = this.videoEl.videoHeight || 1280;
+                const ctx = canvas.getContext('2d');
+
+                // 鏡像補正
+                if (AppState.useFrontCamera) {
+                    ctx.translate(canvas.width, 0);
+                    ctx.scale(-1, 1);
+                }
+
+                ctx.drawImage(this.videoEl, 0, 0, canvas.width, canvas.height);
+                AppState.capturedImageData = canvas.toDataURL('image/jpeg', 0.9);
+
+                // プレビュー画面へ移動
+                document.getElementById('img-capture-preview').src = AppState.capturedImageData;
+                UIModule.switchScreen('screen-capture-preview');
+            }
+        };
+
+        /**
+         * @section CanvasEditorModule
+         * デコキャンバスの描画、スタンプ、タイマー処理を担当
+         */
+        const CanvasEditorModule = {
+            canvas: null,
+            ctx: null,
+            isDrawing: false,
+            lastX: 0,
+            lastY: 0,
+
+            init() {
+                this.canvas = document.getElementById('canvas-paint');
+                this.ctx = this.canvas.getContext('2d');
+
+                this.setupCanvasSize();
+                this.bindEvents();
+            },
+
+            setupCanvasSize() {
+                // アスペクト比に合わせた内部解像度を確保
+                const rect = this.canvas.getBoundingClientRect();
+                this.canvas.width = rect.width * 2;
+                this.canvas.height = rect.height * 2;
+                this.ctx.scale(2, 2);
+                this.ctx.lineCap = 'round';
+                this.ctx.lineJoin = 'round';
+            },
+
+            loadImageOntoCanvas(dataUrl) {
+                this.setupCanvasSize();
+                const img = new Image();
+                img.onload = () => {
+                    const rect = this.canvas.getBoundingClientRect();
+                    this.ctx.drawImage(img, 0, 0, rect.width, rect.height);
+                };
+                img.src = dataUrl;
+            },
+
+            bindEvents() {
+                const getPos = (e) => {
+                    const rect = this.canvas.getBoundingClientRect();
+                    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                    return {
+                        x: clientX - rect.left,
+                        y: clientY - rect.top
+                    };
+                };
+
+                const startDraw = (e) => {
+                    if (AppState.currentTool === 'stamp') {
+                        const pos = getPos(e);
+                        this.drawStamp(pos.x, pos.y);
+                        return;
+                    }
+                    this.isDrawing = true;
+                    const pos = getPos(e);
+                    this.lastX = pos.x;
+                    this.lastY = pos.y;
+                };
+
+                const moveDraw = (e) => {
+                    if (!this.isDrawing) return;
+                    const pos = getPos(e);
+
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(this.lastX, this.lastY);
+                    this.ctx.lineTo(pos.x, pos.y);
+
+                    if (AppState.currentTool === 'eraser') {
+                        this.ctx.globalCompositeOperation = 'destination-out';
+                        this.ctx.lineWidth = AppState.eraserSize;
+                    } else {
+                        this.ctx.globalCompositeOperation = 'source-over';
+                        this.ctx.strokeStyle = AppState.currentColor;
+                        this.ctx.lineWidth = AppState.penSize;
+                    }
+
+                    this.ctx.stroke();
+                    this.lastX = pos.x;
+                    this.lastY = pos.y;
+                };
+
+                const stopDraw = () => {
+                    this.isDrawing = false;
+                };
+
+                this.canvas.addEventListener('mousedown', startDraw);
+                this.canvas.addEventListener('mousemove', moveDraw);
+                window.addEventListener('mouseup', stopDraw);
+
+                this.canvas.addEventListener('touchstart', startDraw);
+                this.canvas.addEventListener('touchmove', moveDraw);
+                window.addEventListener('touchend', stopDraw);
+            },
+
+            drawStamp(x, y) {
+                this.ctx.globalCompositeOperation = 'source-over';
+                this.ctx.font = '28px sans-serif';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                this.ctx.fillText(AppState.selectedStamp, x, y);
+            },
+
+            exportFinalChekiImage() {
+                // チェキ風フレーム付きで結合出力
+                const exportCanvas = document.createElement('canvas');
+                const width = 600;
+                const height = 1000;
+                exportCanvas.width = width;
+                exportCanvas.height = height;
+                const ctx = exportCanvas.getContext('2d');
+
+                // 白フレーム背景
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, width, height);
+
+                // 写真領域
+                const photoMargin = 30;
+                const photoWidth = width - (photoMargin * 2);
+                const photoHeight = 800;
+
+                ctx.drawImage(this.canvas, photoMargin, photoMargin, photoWidth, photoHeight);
+
+                // 下部テキスト (日付・推し名)
+                ctx.fillStyle = '#1e293b';
+                ctx.font = 'bold 24px sans-serif';
+                ctx.textAlign = 'left';
+                
+                const now = new Date();
+                const dateStr = `${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')}`;
+                ctx.fillText(dateStr, photoMargin + 10, photoHeight + photoMargin + 60);
+
+                const activeIdol = StorageModule.getActiveIdol();
+                ctx.fillStyle = activeIdol ? activeIdol.color : '#ff3366';
+                ctx.textAlign = 'right';
+                ctx.fillText(activeIdol ? activeIdol.name : 'Oshi-Cheki', width - photoMargin - 10, photoHeight + photoMargin + 60);
+
+                return exportCanvas.toDataURL('image/jpeg', 0.92);
+            },
+
+            startTimer() {
+                this.stopTimer();
+                const selectEl = document.getElementById('select-editor-timer');
+                let seconds = Number(selectEl.value);
+                if (seconds === 0) return; // 無制限
+
+                AppState.editorTimerSeconds = seconds;
+                AppState.isEditorTimerRunning = true;
+
+                const displayEl = document.getElementById('display-editor-timer');
+                const overlayEl = document.getElementById('overlay-editor-timer-flash');
+
+                const updateDisplay = () => {
+                    const m = String(Math.floor(AppState.editorTimerSeconds / 60)).padStart(2, '0');
+                    const s = String(AppState.editorTimerSeconds % 60).padStart(2, '0');
+                    displayEl.textContent = `${m}:${s}`;
+
+                    if (AppState.editorTimerSeconds <= 10 && AppState.editorTimerSeconds > 0) {
+                        overlayEl.className = 'absolute inset-0 pointer-events-none z-10 flash-warning';
+                    } else if (AppState.editorTimerSeconds === 0) {
+                        overlayEl.className = 'absolute inset-0 pointer-events-none z-10 flash-timeout';
+                    } else {
+                        overlayEl.className = 'absolute inset-0 pointer-events-none z-10';
+                    }
+                };
+
+                updateDisplay();
+
+                AppState.editorTimerInterval = setInterval(() => {
+                    AppState.editorTimerSeconds--;
+                    updateDisplay();
+
+                    if (AppState.editorTimerSeconds <= 0) {
+                        this.stopTimer();
+                        UIModule.showToast('⏰ 時間切れです！');
+                    }
+                }, 1000);
+            },
+
+            stopTimer() {
+                if (AppState.editorTimerInterval) {
+                    clearInterval(AppState.editorTimerInterval);
+                    AppState.editorTimerInterval = null;
+                }
+                AppState.isEditorTimerRunning = false;
+                document.getElementById('btn-toggle-editor-timer').textContent = 'スタート';
+                document.getElementById('overlay-editor-timer-flash').className = 'absolute inset-0 pointer-events-none z-10';
+            }
+        };
+
+        /**
+         * @section AlbumModule
+         * アルバム一覧のレンダリング、ダウンロード、削除を担当
+         */
+        const AlbumModule = {
+            renderGrid(filterGroup = 'all') {
+                const gridEl = document.getElementById('album-grid');
+                const emptyMsgEl = document.getElementById('album-empty-msg');
+                const photos = StorageModule.getAlbumPhotos();
+
+                gridEl.innerHTML = '';
+
+                const filtered = filterGroup === 'all' 
+                    ? photos 
+                    : photos.filter(p => p.group === filterGroup);
+
+                if (filtered.length === 0) {
+                    emptyMsgEl.classList.remove('hidden');
+                    return;
+                }
+                emptyMsgEl.classList.add('hidden');
+
+                filtered.forEach(photo => {
+                    const card = document.createElement('div');
+                    card.className = 'bg-slate-800 rounded-lg p-1.5 border border-slate-700 shadow cursor-pointer active:scale-95 transition flex flex-col items-center';
+                    card.onclick = () => this.openLightbox(photo.id);
+
+                    card.innerHTML = `
+                        <img src="${photo.dataUrl}" class="w-full aspect-[9/16] object-cover rounded bg-white" alt="チェキ">
+                        <div class="mt-1 text-[10px] text-slate-300 font-bold truncate w-full text-center">${photo.idolName || '推し'}</div>
+                    `;
+                    gridEl.appendChild(card);
+                });
+            },
+
+            openLightbox(id) {
+                const photos = StorageModule.getAlbumPhotos();
+                const photo = photos.find(p => p.id === id);
+                if (!photo) return;
+
+                AppState.currentLightboxPhotoId = id;
+                document.getElementById('img-lightbox').src = photo.dataUrl;
+                document.getElementById('info-lightbox').textContent = `${photo.date} | ${photo.group || ''} ${photo.idolName || ''}`;
+                document.getElementById('modal-lightbox').classList.remove('hidden');
+            },
+
+            downloadCurrent() {
+                const photos = StorageModule.getAlbumPhotos();
+                const photo = photos.find(p => p.id === AppState.currentLightboxPhotoId);
+                if (!photo) return;
+
+                const a = document.createElement('a');
+                a.href = photo.dataUrl;
+                a.download = `oshi-cheki-${Date.now()}.jpg`;
+                a.click();
+            },
+
+            deleteCurrent() {
+                if (confirm('このチェキを削除してもよろしいですか？')) {
+                    StorageModule.deleteAlbumPhoto(AppState.currentLightboxPhotoId);
+                    document.getElementById('modal-lightbox').classList.add('hidden');
+                    this.renderGrid();
+                    UIModule.showToast('削除しました');
+                }
+            }
+        };
+
+        /**
+         * @section UIModule
+         * 画面遷移、ポップアップ制御、イベントリスナー割り当てを担当
+         */
+        const UIModule = {
+            init() {
+                this.bindNavigationEvents();
+                this.bindToolPopupEvents();
+                this.bindSettingsEvents();
+                this.updateActiveIdolDisplay();
+            },
+
+            switchScreen(screenId) {
+                document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+                const target = document.getElementById(screenId);
+                if (target) {
+                    target.classList.add('active');
+                    AppState.currentScreen = screenId;
+                }
+            },
+
+            showToast(msg) {
+                const toast = document.getElementById('toast-message');
+                toast.textContent = msg;
+                toast.style.opacity = '1';
+                setTimeout(() => toast.style.opacity = '0', 2500);
+            },
+
+            updateActiveIdolDisplay() {
+                const idol = StorageModule.getActiveIdol();
+                const nameDisplay = document.getElementById('idol-name-display');
+                const colorIndicator = document.getElementById('idol-color-indicator');
+                const footerIdol = document.getElementById('canvas-footer-idol');
+
+                if (idol) {
+                    nameDisplay.textContent = `${idol.group ? idol.group + ' ' : ''}${idol.name}`;
+                    colorIndicator.style.backgroundColor = idol.color;
+                    footerIdol.textContent = idol.name;
+                    footerIdol.style.color = idol.color;
+                } else {
+                    nameDisplay.textContent = '推しメン未選択';
+                    colorIndicator.style.backgroundColor = '#ff3366';
+                }
+            },
+
+            bindNavigationEvents() {
+                // カメラ画面関連ボタン
+                document.getElementById('btn-switch-camera').onclick = () => CameraModule.toggleCamera();
+                
+                document.getElementById('btn-toggle-flash').onclick = () => {
+                    AppState.flashEnabled = !AppState.flashEnabled;
+                    document.getElementById('btn-toggle-flash').style.color = AppState.flashEnabled ? '#eab308' : '#ffffff';
+                    this.showToast(AppState.flashEnabled ? 'フラッシュ ON' : 'フラッシュ OFF');
+                };
+
+                document.getElementById('btn-toggle-timer').onclick = () => {
+                    const modes = [0, 3, 5, 10];
+                    const currentIndex = modes.indexOf(AppState.cameraTimerSec);
+                    AppState.cameraTimerSec = modes[(currentIndex + 1) % modes.length];
+                    const badge = document.getElementById('badge-timer');
+                    badge.textContent = AppState.cameraTimerSec === 0 ? 'オフ' : `${AppState.cameraTimerSec}秒`;
+                };
+
+                document.getElementById('btn-shutter').onclick = () => CameraModule.triggerShutterSequence();
+
+                // プレビュー -> エディタ
+                document.getElementById('btn-retake').onclick = () => this.switchScreen('screen-camera');
+                
+                document.getElementById('btn-proceed-editor').onclick = () => {
+                    this.switchScreen('screen-editor');
+                    CanvasEditorModule.loadImageOntoCanvas(AppState.capturedImageData);
+                };
+
+                // エディタ -> 完成確認
+                document.getElementById('btn-editor-complete').onclick = () => {
+                    const finalImage = CanvasEditorModule.exportFinalChekiImage();
+                    document.getElementById('img-design-preview').src = finalImage;
+                    this.switchScreen('screen-design-preview');
+                };
+
+                document.getElementById('btn-editor-back').onclick = () => this.switchScreen('screen-editor');
+
+                // アルバム保存
+                document.getElementById('btn-save-album').onclick = () => {
+                    const finalImage = document.getElementById('img-design-preview').src;
+                    const activeIdol = StorageModule.getActiveIdol();
+                    const now = new Date();
+
+                    StorageModule.saveAlbumPhoto({
+                        id: Date.now(),
+                        dataUrl: finalImage,
+                        group: activeIdol ? activeIdol.group : '',
+                        idolName: activeIdol ? activeIdol.name : '',
+                        date: `${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')}`
+                    });
+
+                    this.showToast('アルバムに保存しました！');
+                    AlbumModule.renderGrid();
+                    this.switchScreen('screen-album');
+                };
+
+                // アルバム画面遷移
+                document.getElementById('btn-open-album').onclick = () => {
+                    AlbumModule.renderGrid();
+                    this.switchScreen('screen-album');
+                };
+                document.getElementById('btn-album-back').onclick = () => this.switchScreen('screen-camera');
+
+                document.getElementById('btn-album-clear-all').onclick = () => {
+                    if (confirm('アルバムのチェキをすべて削除してもよろしいですか？')) {
+                        StorageModule.clearAlbum();
+                        AlbumModule.renderGrid();
+                        this.showToast('アルバムをクリアしました');
+                    }
+                };
+
+                // ライトボックス操作
+                document.getElementById('btn-close-lightbox').onclick = () => document.getElementById('modal-lightbox').classList.add('hidden');
+                document.getElementById('btn-download-lightbox').onclick = () => AlbumModule.downloadCurrent();
+                document.getElementById('btn-delete-lightbox').onclick = () => AlbumModule.deleteCurrent();
+
+                // エディタタイマー
+                document.getElementById('btn-toggle-editor-timer').onclick = () => {
+                    if (AppState.isEditorTimerRunning) {
+                        CanvasEditorModule.stopTimer();
+                    } else {
+                        CanvasEditorModule.startTimer();
+                        document.getElementById('btn-toggle-editor-timer').textContent = 'ストップ';
+                    }
+                };
+            },
+
+            bindToolPopupEvents() {
+                const popup = document.getElementById('popup-tool-palette');
+                const content = document.getElementById('popup-tool-content');
+                const title = document.getElementById('popup-tool-title');
+
+                const openPopup = (type) => {
+                    AppState.currentTool = type;
+                    popup.classList.remove('hidden');
+
+                    if (type === 'color') {
+                        title.textContent = 'ペンカラー選択';
+                        content.innerHTML = `
+                            <div class="flex flex-wrap gap-3 justify-center">
+                                ${COLOR_PALETTE.map(hex => `
+                                    <button class="w-8 h-8 rounded-full border-2 ${AppState.currentColor === hex ? 'border-white scale-110' : 'border-transparent'}" style="background-color: ${hex}" onclick="UIModule.setPenColor('${hex}')"></button>
+                                `).join('')}
+                            </div>
+                        `;
+                    } else if (type === 'size') {
+                        title.textContent = 'ペンの太さ';
+                        content.innerHTML = `
+                            <div class="w-full px-4">
+                                <input type="range" min="2" max="40" value="${AppState.penSize}" class="w-full" onchange="AppState.penSize = Number(this.value)">
+                            </div>
+                        `;
+                    } else if (type === 'eraser') {
+                        title.textContent = '消しゴムサイズ';
+                        content.innerHTML = `
+                            <div class="w-full px-4">
+                                <input type="range" min="10" max="60" value="${AppState.eraserSize}" class="w-full" onchange="AppState.eraserSize = Number(this.value)">
+                            </div>
+                        `;
+                    } else if (type === 'stamp') {
+                        title.textContent = 'スタンプ選択';
+                        content.innerHTML = `
+                            <div class="flex flex-wrap gap-2 justify-center max-h-32 overflow-y-auto">
+                                ${STAMPS.map(stamp => `
+                                    <button class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-lg ${AppState.selectedStamp === stamp ? 'border-2 border-pink-500' : ''}" onclick="UIModule.setStamp('${stamp}')">${stamp}</button>
+                                `).join('')}
+                            </div>
+                        `;
+                    }
+                };
+
+                document.getElementById('tool-color').onclick = () => openPopup('color');
+                document.getElementById('tool-size').onclick = () => openPopup('size');
+                document.getElementById('tool-eraser').onclick = () => openPopup('eraser');
+                document.getElementById('tool-stamp').onclick = () => openPopup('stamp');
+                
+                document.getElementById('tool-clear').onclick = () => {
+                    if (confirm('全描画をクリアしますか？')) {
+                        CanvasEditorModule.loadImageOntoCanvas(AppState.capturedImageData);
+                    }
+                };
+
+                document.getElementById('btn-close-popup').onclick = () => popup.classList.add('hidden');
+            },
+
+            setPenColor(hex) {
+                AppState.currentColor = hex;
+                document.getElementById('popup-tool-palette').classList.add('hidden');
+            },
+
+            setStamp(stamp) {
+                AppState.selectedStamp = stamp;
+                document.getElementById('popup-tool-palette').classList.add('hidden');
+            },
+
+            bindSettingsEvents() {
+                const settingsModal = document.getElementById('modal-settings');
+                
+                document.getElementById('btn-open-settings').onclick = () => {
+                    this.renderSettingsIdolList();
+                    settingsModal.classList.remove('hidden');
+                };
+
+                document.getElementById('badge-active-idol').onclick = () => {
+                    this.renderSettingsIdolList();
+                    settingsModal.classList.remove('hidden');
+                };
+
+                document.getElementById('btn-close-settings').onclick = () => settingsModal.classList.add('hidden');
+
+                document.getElementById('btn-add-idol').onclick = () => {
+                    const group = document.getElementById('input-group-name').value.trim();
+                    const name = document.getElementById('input-idol-name').value.trim();
+                    const color = document.getElementById('input-idol-color').value;
+
+                    if (!name) {
+                        alert('推しメン名を入力してください');
+                        return;
+                    }
+
+                    const idols = StorageModule.getIdols();
+                    const newIdol = {
+                        id: Date.now(),
+                        group: group || 'フリー',
+                        name: name,
+                        color: color
+                    };
+
+                    idols.push(newIdol);
+                    StorageModule.saveIdols(idols);
+                    StorageModule.setActiveIdolId(newIdol.id);
+
+                    document.getElementById('input-idol-name').value = '';
+                    this.renderSettingsIdolList();
+                    this.updateActiveIdolDisplay();
+                    this.showToast(`${name}ちゃんを追加しました！`);
+                };
+            },
+
+            renderSettingsIdolList() {
+                const container = document.getElementById('idol-list-container');
+                const idols = StorageModule.getIdols();
+                const activeId = StorageModule.getActiveIdol()?.id;
+
+                container.innerHTML = '';
+                idols.forEach(idol => {
+                    const item = document.createElement('div');
+                    item.className = `p-3 rounded-xl border flex items-center justify-between cursor-pointer transition ${idol.id === activeId ? 'bg-pink-950/40 border-pink-500' : 'bg-slate-800 border-slate-700'}`;
+                    item.onclick = () => {
+                        StorageModule.setActiveIdolId(idol.id);
+                        this.renderSettingsIdolList();
+                        this.updateActiveIdolDisplay();
+                    };
+
+                    item.innerHTML = `
+                        <div class="flex items-center gap-3">
+                            <span class="w-4 h-4 rounded-full" style="background-color: ${idol.color}"></span>
+                            <div>
+                                <div class="text-xs text-slate-400">${idol.group}</div>
+                                <div class="text-sm font-bold text-white">${idol.name}</div>
+                            </div>
+                        </div>
+                        ${idol.id === activeId ? '<span class="text-xs bg-pink-500 font-bold px-2 py-0.5 rounded-full">選択中</span>' : ''}
+                    `;
+                    container.appendChild(item);
+                });
+            }
+        };
+
+        // =================================================================
+        // アプリケーション起動ルーチン
+        // =================================================================
+        window.onload = () => {
+            // 今日の日付をセット
+            const now = new Date();
+            document.getElementById('canvas-footer-date').textContent = `${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')}`;
+
+            // モジュール初期化
+            UIModule.init();
+            CameraModule.init();
+            CanvasEditorModule.init();
+        };
+    </script>
+</body>
+</html>
