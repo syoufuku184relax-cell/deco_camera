@@ -120,16 +120,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const colorBadgeName = document.getElementById('active-color-name');
     const colorDot = document.querySelector('.color-dot');
     const sizeBadge = document.getElementById('active-size-badge');
+    const eraserBadge = document.getElementById('active-eraser-badge');
+    const stampBadge = document.getElementById('active-stamp-badge');
 
+    // カラー表示
     const foundColor = customColorPalette.find(c => c.hex.toLowerCase() === currentColor.toLowerCase());
     const colorName = foundColor ? foundColor.displayName : 'カスタム';
     if (colorBadgeName) colorBadgeName.textContent = colorName;
     if (colorDot) colorDot.style.backgroundColor = currentColor;
 
+    // ペン太さ表示
     let sizeText = '中';
     if (penSize <= 10) sizeText = '細';
     else if (penSize >= 45) sizeText = '太';
     if (sizeBadge) sizeBadge.textContent = sizeText;
+
+    // 消しゴム太さ表示
+    let eraserText = '中';
+    if (eraserSize >= 40) eraserText = '太';
+    if (eraserBadge) eraserBadge.textContent = eraserText;
+
+    // 選択スタンプ表示
+    if (stampBadge) stampBadge.textContent = selectedStamp || 'なし';
   }
 
   function saveData() {
@@ -169,7 +181,6 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         currentStream = await navigator.mediaDevices.getUserMedia(constraints);
       } catch (e) {
-        // exact指定でエラーが出る環境（PC等）向けのフォールバック
         currentStream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: useFrontCamera ? 'user' : 'environment' },
           audio: false
@@ -457,6 +468,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (isStampMode) {
+      if (!selectedStamp) return;
       placedStamps.push({
         char: selectedStamp,
         x: pos.x,
@@ -562,6 +574,9 @@ document.addEventListener('DOMContentLoaded', () => {
         <span class="setting-label">③ メンバー選択 (タップで決定)</span>
         <div id="modal-idol-list" style="max-height:160px; overflow-y:auto;"></div>
       </div>
+      <div style="margin-top: 15px; text-align: center;">
+        <button id="delete-group-btn" class="btn danger" style="padding: 6px 12px; font-size: 0.8rem;">グループ名を削除</button>
+      </div>
     `;
     openModal(html);
     renderIdolItemsInModal();
@@ -612,6 +627,23 @@ document.addEventListener('DOMContentLoaded', () => {
         openSettingsModal();
         updateActiveBadge();
         updateToolBadges();
+      });
+    }
+
+    const delGroupBtn = document.getElementById('delete-group-btn');
+    if (delGroupBtn) {
+      delGroupBtn.addEventListener('click', () => {
+        if (confirm(`現在のグループ「${currentGroup}」および所属メンバーを削除しますか？`)) {
+          groups = groups.filter(g => g !== currentGroup);
+          idolList = idolList.filter(i => i.group !== currentGroup);
+          currentGroup = groups[0] || '';
+          activeIdolId = idolList.length > 0 ? idolList[0].id : null;
+          currentColor = getActiveIdol().color;
+          saveData();
+          openSettingsModal();
+          updateActiveBadge();
+          updateToolBadges();
+        }
       });
     }
   }
@@ -712,6 +744,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.addEventListener('click', (e) => {
           eraserSize = Number(e.currentTarget.getAttribute('data-size'));
           if (modalOverlay) modalOverlay.classList.remove('active');
+          updateToolBadges();
         });
       });
     });
@@ -720,7 +753,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (toolStamp) {
     toolStamp.addEventListener('click', () => {
       isEraser = false; isStampMode = true; updateActiveTool(toolStamp);
-      const stamps = ['❤️','✨','⭐','🎀','🔥','👑','🐾','🎵','💬'];
+      const stamps = ['❤️','✨','🎀','🎉','👑','🐾','🎵','🐶','🐱'];
       let html = '<p style="text-align:center; font-weight:bold;">スタンプを選択</p><div class="stamp-grid">';
       stamps.forEach(s => { html += `<div class="stamp-item" data-stamp="${s}">${s}</div>`; });
       html += '</div>';
@@ -729,6 +762,7 @@ document.addEventListener('DOMContentLoaded', () => {
         item.addEventListener('click', (e) => {
           selectedStamp = e.target.getAttribute('data-stamp');
           if (modalOverlay) modalOverlay.classList.remove('active');
+          updateToolBadges();
         });
       });
     });
