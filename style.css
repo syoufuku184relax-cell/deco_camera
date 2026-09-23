@@ -1,4 +1,4 @@
-/* --- リセット &基本設定---*/
+/* --- リセット & 基本設定 --- */
 * {
   box-sizing: border-box;
   margin: 0;
@@ -15,7 +15,8 @@ html, body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   color: #fff;
 }
-/* --- 画面共通設定(下部スマホバー干渉回避)---*/
+
+/* --- 画面共通設定 --- */
 .screen {
   display: none !important;
   position: fixed;
@@ -33,6 +34,7 @@ html, body {
 .screen.active {
   display: flex !important;
 }
+
 /* --- ボタン共通クラス --- */
 .btn {
   padding: 12px 18px;
@@ -47,6 +49,7 @@ html, body {
 .btn.primary { background-color: #ff3366; color: #fff; }
 .btn.secondary { background-color: #444; color: #fff; }
 .btn.danger { background-color: #e63946; color: #fff; }
+
 .icon-btn {
   background: rgba(0, 0, 0, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -60,12 +63,14 @@ html, body {
   font-size: 1.1rem;
   cursor: pointer;
   position: relative;
+  z-index: 20;
 }
 .icon-btn.active-tool {
   border-color: #ff3366;
   color: #ff3366;
 }
-/*--- 1. 撮影画面 --- */
+
+/* --- 1. 撮影画面 --- */
 #camera-container {
   position: relative;
 }
@@ -76,7 +81,7 @@ html, body {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  z-index: -1;
+  z-index: 0;
 }
 .camera-mirrored {
   transform: scaleX(-1);
@@ -91,6 +96,7 @@ html, body {
   color: #fff;
   text-shadow: 0 0 20px rgba(0,0,0,0.8);
   pointer-events: none;
+  z-index: 15;
 }
 #active-idol-badge {
   position: absolute;
@@ -141,7 +147,8 @@ html, body {
   padding: 1px 4px;
   border-radius: 8px;
 }
-/*--- 2. プレビュー画面(共通)---*/
+
+/* --- 2. プレビュー画面 --- */
 .preview-box {
   flex: 1;
   width: 100%;
@@ -167,7 +174,8 @@ html, body {
 .preview-controls button {
   flex: 1;
 }
-/* --- 3. デザイン・編集画面--*/
+
+/* --- 3. デザイン・編集画面 --- */
 #editor-container {
   padding: 10px;
   background: #1a1a1a;
@@ -220,7 +228,6 @@ html, body {
   font-weight: bold;
 }
 
-/* ★ ツールバー内の選択状態表示バッジ ★ */
 .tool-sub-badge {
   font-size: 0.6rem;
   color: #aaa;
@@ -251,7 +258,8 @@ html, body {
 .editor-bottom-bar button {
   flex: 1;
 }
-/*--- 4. アルバム画面 --- */
+
+/* --- 4. アルバム画面 --- */
 #album-container {
   background-color: #121212;
   padding-bottom: 0;
@@ -287,7 +295,8 @@ html, body {
   height: 100%;
   object-fit: cover;
 }
-/*--- モーダル・ダイアログ --- */
+
+/* --- モーダル・ダイアログ --- */
 .modal-overlay, .lightbox-overlay {
   display: none;
   position: fixed;
@@ -324,7 +333,6 @@ html, body {
   font-size: 1.2rem;
   cursor: pointer;
 }
-/* 設定モーダルフォームスタイル*/
 .setting-section {
   margin-bottom: 16px;
   padding-bottom: 12px;
@@ -406,11 +414,10 @@ html, body {
   gap: 10px;
   margin-top: 15px;
 }
-/* ★ アルバム画像および拡大表示画像で長押し保存を許可する設定 */
 .album-item img,
 .lightbox-content img {
   -webkit-touch-callout: default !important;
   -webkit-user-select: auto !important;
   user-select: auto !important;
   pointer-events: auto !important;
-                                              }
+}
