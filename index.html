@@ -51,8 +51,14 @@
   <span>ペン太さ</span>
   <span id="active-size-badge" class="tool-sub-badge">中</span>
 </button>
-<button id="tool-eraser" class="tool-btn"><span>消しゴム</span></button>
-<button id="tool-stamp" class="tool-btn"><span>スタンプ</span></button>
+<button id="tool-eraser" class="tool-btn">
+  <span>消しゴム</span>
+  <span id="active-eraser-badge" class="tool-sub-badge">中</span>
+</button>
+<button id="tool-stamp" class="tool-btn">
+  <span>スタンプ</span>
+  <span id="active-stamp-badge" class="tool-sub-badge">なし</span>
+</button>
 <button id="tool-clear" class="tool-btn"><span>全消去</span></button>
 </div>
 <div class="editor-bottom-bar">
@@ -99,11 +105,8 @@
 <div class="modal-card">
 <button id="modal-close-btn" class="modal-close">×</button>
 <div id="modal-body"></div>
-<div class="modal-footer" style="margin-top: 15px; text-align: center;">
-<button id="delete-group-btn" class="btn danger" style="padding: 6px 12px; font-size: 0.8rem;">グループ名を削除</button>
-</div>
 </div>
 </div>
 <script src="app.js"></script>
 </body>
-  </html>
+</html>
