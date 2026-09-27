@@ -43,6 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const toolSize = document.getElementById('tool-size');
   const toolEraser = document.getElementById('tool-eraser');
   const toolStamp = document.getElementById('tool-stamp');
+  const toolTone = document.getElementById('tool-tone');
   const toolUndo = document.getElementById('tool-undo');
   const toolClear = document.getElementById('tool-clear');
   const modalOverlay = document.getElementById('modal-overlay');
@@ -61,6 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let selectedStamp = '';
   let penSize = 25;
   let eraserSize = 15;
+  let currentToneLevel = 'off'; // トーン補正設定 ('off', 'weak', 'strong')
   let capturedDataUrl = '';
   let capturedImageObj = null;
   let currentSerialNo = '';
@@ -127,6 +129,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const sizeBadge = document.getElementById('active-size-badge');
     const eraserBadge = document.getElementById('active-eraser-badge');
     const stampBadge = document.getElementById('active-stamp-badge');
+    const toneBadge = document.getElementById('active-tone-badge');
 
     const foundColor = customColorPalette.find(c => c.hex.toLowerCase() === currentColor.toLowerCase());
     const colorName = foundColor ? foundColor.displayName : 'カスタム';
@@ -143,6 +146,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (eraserBadge) eraserBadge.textContent = eraserText;
 
     if (stampBadge) stampBadge.textContent = selectedStamp || 'なし';
+
+    let toneText = 'オフ';
+    if (currentToneLevel === 'weak') toneText = '弱';
+    else if (currentToneLevel === 'strong') toneText = '強';
+    if (toneBadge) toneBadge.textContent = toneText;
   }
 
   function saveData() {
@@ -168,7 +176,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     historyStack.push({
       doodleData: doodleCtx.getImageData(0, 0, doodleCanvas.width, doodleCanvas.height),
-      stamps: JSON.parse(JSON.stringify(placedStamps))
+      stamps: JSON.parse(JSON.stringify(placedStamps)),
+      tone: currentToneLevel
     });
   }
 
@@ -177,7 +186,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const previousState = historyStack.pop();
     doodleCtx.putImageData(previousState.doodleData, 0, 0);
     placedStamps = previousState.stamps;
+    currentToneLevel = previousState.tone || 'off';
     selectedStampIndex = -1;
+    updateToolBadges();
     redrawCanvas();
   }
 
@@ -340,9 +351,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         placedStamps = [];
         selectedStampIndex = -1;
+        currentToneLevel = 'off';
         currentSerialNo = generateUniqueSerial();
         historyStack = [];
-        saveState(); // 初期描画状態を保存
+        saveState();
         updateToolBadges();
         redrawCanvas();
         switchScreen(editorContainer);
@@ -384,7 +396,18 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.beginPath();
       ctx.rect(frameLeft, frameTop, targetWidth, targetHeight);
       ctx.clip();
+
+      // ★ アプローチ1: トーンアップ（美肌・明るさ補正）の適用
+      if (currentToneLevel === 'weak') {
+        ctx.filter = 'brightness(1.08) contrast(0.96) saturate(1.03)';
+      } else if (currentToneLevel === 'strong') {
+        ctx.filter = 'brightness(1.15) contrast(0.92) saturate(1.05)';
+      } else {
+        ctx.filter = 'none';
+      }
+
       ctx.drawImage(capturedImageObj, dx, dy, dWidth, dHeight);
+      ctx.filter = 'none';
       ctx.restore();
     }
 
@@ -463,7 +486,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const btnY = s.y - half - 10;
       const dist = Math.hypot(pos.x - btnX, pos.y - btnY);
       if (dist <= 45) {
-        saveState(); // 削除前に履歴保存
+        saveState();
         placedStamps.splice(selectedStampIndex, 1);
         selectedStampIndex = -1;
         redrawCanvas();
@@ -483,7 +506,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (clickedStampIdx !== -1) {
-      saveState(); // 移動前に履歴保存
+      saveState();
       selectedStampIndex = clickedStampIdx;
       isDraggingStamp = true;
       dragOffsetX = pos.x - placedStamps[clickedStampIdx].x;
@@ -495,12 +518,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (isStampMode) {
       if (!selectedStamp) return;
-      saveState(); // スタンプ配置前に履歴保存
+      saveState();
+      // ★ スタンプサイズをさらに1.5倍（135px → 200px）へ拡大
       placedStamps.push({
         char: selectedStamp,
         x: pos.x,
         y: pos.y,
-        size: 135
+        size: 200
       });
       selectedStampIndex = placedStamps.length - 1;
       redrawCanvas();
@@ -548,7 +572,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function stopAction() {
     if (isDrawing) {
-      saveState(); // 1ストローク描き終わったら履歴保存
+      saveState();
     }
     isDrawing = false;
     isDraggingStamp = false;
@@ -724,7 +748,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (settingsBtn) settingsBtn.addEventListener('click', openSettingsModal);
 
   function updateActiveTool(activeBtn) {
-    [toolColor, toolSize, toolEraser, toolStamp].forEach(btn => btn && btn.classList.remove('active-tool'));
+    [toolColor, toolSize, toolEraser, toolStamp, toolTone].forEach(btn => btn && btn.classList.remove('active-tool'));
     if (activeBtn) activeBtn.classList.add('active-tool');
   }
 
@@ -783,6 +807,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (toolStamp) {
     toolStamp.addEventListener('click', () => {
       isEraser = false; isStampMode = true; updateActiveTool(toolStamp);
+      // ★ 「💬」を「🕶️」に差し替え
       const stamps = ['❤️','✨','⭐','🎀','🔥','👑','🐾','🎵','🕶️'];
       let html = '<p style="text-align:center; font-weight:bold;">スタンプを選択</p><div class="stamp-grid">';
       stamps.forEach(s => { html += `<div class="stamp-item" data-stamp="${s}">${s}</div>`; });
@@ -798,6 +823,32 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // ★ トーン補正（美肌モード）ダイアログ
+  if (toolTone) {
+    toolTone.addEventListener('click', () => {
+      isEraser = false; isStampMode = false; selectedStampIndex = -1; redrawCanvas();
+      updateActiveTool(toolTone);
+      let html = `
+        <p style="text-align:center; font-weight:bold; margin-bottom:15px;">トーン補正 (美肌)</p>
+        <div style="display: flex; justify-content:space-around;">
+          <button class="btn tone-select-btn ${currentToneLevel === 'off' ? 'primary' : 'secondary'}" data-tone="off">オフ</button>
+          <button class="btn tone-select-btn ${currentToneLevel === 'weak' ? 'primary' : 'secondary'}" data-tone="weak">弱</button>
+          <button class="btn tone-select-btn ${currentToneLevel === 'strong' ? 'primary' : 'secondary'}" data-tone="strong">強</button>
+        </div>
+      `;
+      openModal(html);
+      document.querySelectorAll('.tone-select-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          saveState();
+          currentToneLevel = e.currentTarget.getAttribute('data-tone');
+          if (modalOverlay) modalOverlay.classList.remove('active');
+          updateToolBadges();
+          redrawCanvas();
+        });
+      });
+    });
+  }
+
   if (toolUndo) {
     toolUndo.addEventListener('click', () => {
       undo();
@@ -807,7 +858,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (toolClear) {
     toolClear.addEventListener('click', () => {
       if (confirm('落書き・スタンプをすべてクリアしますか?')) {
-        saveState(); // クリア操作も取り消せるように履歴保存
+        saveState();
         doodleCtx.clearRect(0, 0, doodleCanvas.width, doodleCanvas.height);
         placedStamps = [];
         selectedStampIndex = -1;
