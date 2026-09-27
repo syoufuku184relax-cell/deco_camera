@@ -43,6 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const toolSize = document.getElementById('tool-size');
   const toolEraser = document.getElementById('tool-eraser');
   const toolStamp = document.getElementById('tool-stamp');
+  const toolUndo = document.getElementById('tool-undo');
   const toolClear = document.getElementById('tool-clear');
   const modalOverlay = document.getElementById('modal-overlay');
   const modalBody = document.getElementById('modal-body');
@@ -70,6 +71,10 @@ document.addEventListener('DOMContentLoaded', () => {
   let isDraggingStamp = false;
   let dragOffsetX = 0;
   let dragOffsetY = 0;
+
+  // アンドゥ（履歴）管理用構造
+  let historyStack = [];
+  const MAX_HISTORY = 20;
 
   const customColorPalette = [
     { name: '白', displayName: '白', hex: '#FFFFFF' },
@@ -123,24 +128,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const eraserBadge = document.getElementById('active-eraser-badge');
     const stampBadge = document.getElementById('active-stamp-badge');
 
-    // カラー表示
     const foundColor = customColorPalette.find(c => c.hex.toLowerCase() === currentColor.toLowerCase());
     const colorName = foundColor ? foundColor.displayName : 'カスタム';
     if (colorBadgeName) colorBadgeName.textContent = colorName;
     if (colorDot) colorDot.style.backgroundColor = currentColor;
 
-    // ペン太さ表示
     let sizeText = '中';
     if (penSize <= 10) sizeText = '細';
     else if (penSize >= 45) sizeText = '太';
     if (sizeBadge) sizeBadge.textContent = sizeText;
 
-    // 消しゴム太さ表示
     let eraserText = '中';
     if (eraserSize >= 40) eraserText = '太';
     if (eraserBadge) eraserBadge.textContent = eraserText;
 
-    // 選択スタンプ表示
     if (stampBadge) stampBadge.textContent = selectedStamp || 'なし';
   }
 
@@ -157,6 +158,27 @@ document.addEventListener('DOMContentLoaded', () => {
     let code = '';
     for (let i = 0; i < 4; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
     return code;
+  }
+
+  // --- 履歴（アンドゥ）管理関数 ---
+  function saveState() {
+    if (!doodleCtx || !doodleCanvas) return;
+    if (historyStack.length >= MAX_HISTORY) {
+      historyStack.shift();
+    }
+    historyStack.push({
+      doodleData: doodleCtx.getImageData(0, 0, doodleCanvas.width, doodleCanvas.height),
+      stamps: JSON.parse(JSON.stringify(placedStamps))
+    });
+  }
+
+  function undo() {
+    if (historyStack.length === 0) return;
+    const previousState = historyStack.pop();
+    doodleCtx.putImageData(previousState.doodleData, 0, 0);
+    placedStamps = previousState.stamps;
+    selectedStampIndex = -1;
+    redrawCanvas();
   }
 
   // --- 5. カメラ制御 ---
@@ -319,6 +341,8 @@ document.addEventListener('DOMContentLoaded', () => {
         placedStamps = [];
         selectedStampIndex = -1;
         currentSerialNo = generateUniqueSerial();
+        historyStack = [];
+        saveState(); // 初期描画状態を保存
         updateToolBadges();
         redrawCanvas();
         switchScreen(editorContainer);
@@ -439,6 +463,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const btnY = s.y - half - 10;
       const dist = Math.hypot(pos.x - btnX, pos.y - btnY);
       if (dist <= 45) {
+        saveState(); // 削除前に履歴保存
         placedStamps.splice(selectedStampIndex, 1);
         selectedStampIndex = -1;
         redrawCanvas();
@@ -458,6 +483,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (clickedStampIdx !== -1) {
+      saveState(); // 移動前に履歴保存
       selectedStampIndex = clickedStampIdx;
       isDraggingStamp = true;
       dragOffsetX = pos.x - placedStamps[clickedStampIdx].x;
@@ -469,6 +495,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (isStampMode) {
       if (!selectedStamp) return;
+      saveState(); // スタンプ配置前に履歴保存
       placedStamps.push({
         char: selectedStamp,
         x: pos.x,
@@ -520,6 +547,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function stopAction() {
+    if (isDrawing) {
+      saveState(); // 1ストローク描き終わったら履歴保存
+    }
     isDrawing = false;
     isDraggingStamp = false;
   }
@@ -753,7 +783,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (toolStamp) {
     toolStamp.addEventListener('click', () => {
       isEraser = false; isStampMode = true; updateActiveTool(toolStamp);
-      const stamps = ['❤️','✨','🎀','🎉','👑','🐾','🎵','🐶','🐱'];
+      const stamps = ['❤️','✨','⭐','🎀','🔥','👑','🐾','🎵','🕶️'];
       let html = '<p style="text-align:center; font-weight:bold;">スタンプを選択</p><div class="stamp-grid">';
       stamps.forEach(s => { html += `<div class="stamp-item" data-stamp="${s}">${s}</div>`; });
       html += '</div>';
@@ -768,9 +798,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  if (toolUndo) {
+    toolUndo.addEventListener('click', () => {
+      undo();
+    });
+  }
+
   if (toolClear) {
     toolClear.addEventListener('click', () => {
       if (confirm('落書き・スタンプをすべてクリアしますか?')) {
+        saveState(); // クリア操作も取り消せるように履歴保存
         doodleCtx.clearRect(0, 0, doodleCanvas.width, doodleCanvas.height);
         placedStamps = [];
         selectedStampIndex = -1;
